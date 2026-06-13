@@ -1,59 +1,27 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wes' Sub-20 5K Dashboard</title>
-    <!-- Simple mobile-friendly styling -->
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f4f6f9; color: #333; margin: 0; padding: 15px; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px; }
-        h1 { font-size: 1.5rem; margin-top: 0; color: #111; }
-        .date-sub { font-size: 0.9rem; color: #666; margin-bottom: 20px; }
-        .phase-badge { display: inline-block; background: #e1f5fe; color: #0288d1; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; }
-        .focus-area { font-weight: 600; margin: 10px 0; font-size: 1.1rem; color: #2c3e50; }
-        .run-title { background: #fff3e0; color: #e65100; border-left: 5px solid #ff9800; padding: 15px; border-radius: 4px; font-size: 1.3rem; font-weight: bold; margin: 15px 0; }
-        .details-box { background: #f9f9f9; padding: 15px; border-radius: 6px; font-style: italic; color: #555; line-height: 1.4; border-left: 5px solid #cbd5e1; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85rem; }
-        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
-        th { background-color: #f1f5f9; }
-        .loading { text-align: center; color: #888; padding: 20px; }
-    </style>
-</head>
-<body>
-
-    <div class="card">
-        <h1>🏃‍♂️ 5K Morning Dashboard</h1>
-        <div class="date-sub" id="current-time">Loading date and time...</div>
-        <div id="workout-content" class="loading">Fetching today's schedule from Google Sheets...</div>
-    </div>
-
-    <div class="card">
-        <h3>👀 Coming Up Next</h3>
-        <div id="preview-table">Loading upcoming schedule...</div>
-    </div>
-
     <script>
-        // Points to your spreadsheet's live CSV export endpoint
+        // Your exact spreadsheet ID with the public export parameter applied
         const SHEET_ID = "1VSBJIC8jeLB0_073igudn0qMY_3V3SUnTdA3ApPIxEU";
-        const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
+        const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
 
-        // Helper to parse CSV strings safely
+        // Safely parses the Google Sheet CSV output data
         function parseCSV(text) {
             let lines = text.split('\n');
             let result = [];
-            let headers = lines[0].split(',');
+            if (lines.length === 0) return result;
             
-            for(let i=1; i<lines.length; i++) {
-                if(!lines[i]) continue;
-                // Simple handle for commas inside quotes (like in workout details)
-                let row = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',');
-                row = row.map(val => val.replace(/^"|"$/g, '').trim());
+            // Extract headers and strip surrounding quotes
+            let headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+            
+            for(let i = 1; i < lines.length; i++) {
+                if(!lines[i].trim()) continue;
+                
+                // Regex to split by commas while safely ignoring commas inside quotes
+                let matches = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',');
+                let row = matches.map(val => val.replace(/^"|"$/g, '').trim());
                 
                 let obj = {};
-                for(let j=0; j<headers.length; j++) {
-                    let key = headers[j].trim().replace(/^"|"$/g, '');
-                    obj[key] = row[j];
+                for(let j = 0; j < headers.length; j++) {
+                    obj[headers[j]] = row[j] || "";
                 }
                 result.push(obj);
             }
@@ -61,10 +29,10 @@
         }
 
         async function initDashboard() {
-            // Get local date/time in Eastern Time format for Barrie
+            // Force dynamic live Eastern Time zone calculations for Barrie, ON
             const options = { timeZone: "America/Toronto", year: 'numeric', month: '2-digit', day: '2-digit' };
-            const formatter = new Intl.DateTimeFormat('en-CA', options); // returns YYYY-MM-DD
-            const todayStr = formatter.format(new Date()); 
+            const formatter = new Intl.DateTimeFormat('en-CA', options); 
+            const todayStr = formatter.format(new Date()); // Outputs exactly: YYYY-MM-DD
 
             const timeOptions = { timeZone: "America/Toronto", weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
             document.getElementById('current-time').innerText = new Intl.DateTimeFormat('en-US', timeOptions).format(new Date()) + " | Barrie, ON";
@@ -74,12 +42,12 @@
                 const csvText = await response.text();
                 const data = parseCSV(csvText);
 
-                // Find today's row matching date format
+                // Look for a row where the Date column matches today's date string
                 const todayWorkout = data.find(row => row.Date === todayStr);
                 const contentDiv = document.getElementById('workout-content');
 
                 if (todayWorkout) {
-                    contentDiv.className = ""; // clear loading style
+                    contentDiv.className = ""; 
                     contentDiv.innerHTML = `
                         <span class="phase-badge">${todayWorkout.Phase}</span>
                         <div class="focus-area">🎯 Focus: ${todayWorkout["Activity Type"]}</div>
@@ -89,37 +57,36 @@
                     `;
                 } else {
                     contentDiv.className = "";
-                    // Handle weekends or rest days
-                    const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+                    const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: "America/Toronto" });
+                    
                     if(['Saturday', 'Sunday'].includes(dayName)) {
                         contentDiv.innerHTML = `
                             <span class="phase-badge">Phase: Recovery</span>
                             <div class="focus-area">🔋 Focus: Weekend Rest Day</div>
                             <div class="run-title">💤 Sleep & Stretch</div>
-                            <div class="details-box">Let the muscles adapt and rebuild. Focus on light stretching and recovery.</div>
+                            <div class="details-box">Full rest and adaptation day. Focus on foam rolling and recovery!</div>
                         `;
                     } else {
-                        contentDiv.innerHTML = `<div class="details-box">No specific run listed for today in this block. Enjoy your recovery!</div>`;
+                        contentDiv.innerHTML = `<div class="details-box">No run listed for today (${todayStr}). Check your spreadsheet dates!</div>`;
                     }
                 }
 
-                // Populate coming up next table (filtering today and next 4 days)
+                // Display upcoming schedules dynamically
                 const futureRuns = data.filter(row => row.Date >= todayStr).slice(0, 5);
                 let tableHtml = `<table><tr><th>Date</th><th>Day</th><th>Type</th><th>Guided Run Title</th></tr>`;
+                
                 futureRuns.forEach(row => {
-                    let cleanDate = row.Date ? row.Date.substring(5) : ""; // MM-DD
+                    let cleanDate = row.Date ? row.Date.substring(5) : ""; // Displays MM-DD format
                     tableHtml += `<tr><td>${cleanDate}</td><td>${row.Day}</td><td>${row["Activity Type"]}</td><td><strong>${row["NRC Guided Run Title"]}</strong></td></tr>`;
                 });
                 tableHtml += `</table>`;
                 document.getElementById('preview-table').innerHTML = tableHtml;
 
             } catch (error) {
-                document.getElementById('workout-content').innerText = "Error syncing with your Google Sheet. Verify that Link Sharing is enabled.";
+                document.getElementById('workout-content').innerText = "Error syncing data. Make sure link sharing is set to 'Anyone with the link can view' in Google Sheets.";
                 console.error(error);
             }
         }
 
         initDashboard();
     </script>
-</body>
-</html>
